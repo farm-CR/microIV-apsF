@@ -6,12 +6,17 @@ library(sf)
 
 #Mapa ----
 municipios <- read_municipality(code_muni = "all", year = 2018)
+municipios <- readRDS(file = "municipios.rds")
+
 
 df <- read_csv("base.csv") %>% 
   rename("code_muni" = "id_municipio") %>% 
-  mutate(grupo = ifelse((tratamento == 1 & incluso == 1), "Tratamento", ifelse((tratamento == 0 & incluso == 1), "Controle", "Não incluso")))
+  mutate(incluso = ifelse(distancia < 150, 1, 0),
+         grupo = ifelse((tratamento == 1 & incluso == 1), "Tratamento", 
+                        ifelse((tratamento == 0 & incluso == 1), "Controle", "Não incluso")))
 
 data <- left_join(municipios, df, by = "code_muni")
+
 
 gg <- ggplot() +
   geom_sf(data = data, aes(fill = grupo), color = "#B3DBCF", lwd = .001) +
@@ -22,7 +27,20 @@ gg <- ggplot() +
 gg
 ggsave("mapa.png", gg, dpi = 600)
 
+#RDD
+
+df <- read_csv("base_abstencao.csv") %>% 
+  mutate(distancia = ifelse(tratamento == 1, -distancia, distancia)) %>% 
+  filter(ano == 2018)
+
+ggplot(df, aes(x = distancia, y = abstencao, size = populacao)) +
+  geom_point(alpha = .1) +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  xlim(c(-150,150))
+
+
 #Tendências ----
+
 
 df <- read_csv("base_abstencao.csv") %>% 
   filter(incluso == 1) %>% 
