@@ -2,6 +2,12 @@ library(tidyverse)
 library(fixest)
 library(modelsummary)
 library(MatchIt)
+library(haven)
+library(estimatr)
+library(rdrobust)
+library(rddensity)
+library(rdd)
+
 
 df <- read_csv("data.csv") 
 df <- df %>% 
@@ -34,7 +40,7 @@ modelo_psm <- tratamento ~ razao_dependencia + taxa_envelhecimento + expectativa
   taxa_desocupacao_18_mais  + taxa_agua_encanada + log(populacao) + populacao_urbana + abstencao_2018 +
   log(abstencao) + log(competitividade) + log(pib_pc) + log(beneficiados) + pib_governo + eleitores_secao
 
-#Estimação do propensity
+#Estima??o do propensity
 summary(glm(modelo_psm, data = df.psm, family = binomial(link = 'logit')))
 
 modelo_psm <- tratamento ~ taxa_envelhecimento + taxa_analfabetismo_18_mais + indice_gini + prop_pobreza_extrema + log(renda_pc) + idhm +
@@ -70,12 +76,16 @@ modelsummary(list(
 ))
 
 
-#Estimação do DD----
+#Estima??o do DD----
 modelo <- log(abstencao) ~ 
   log(competitividade) + log(pib_pc) + ideb + log(beneficiados) + 
   log(pib_governo) + log(eleitores_secao) + tratamento : (ano == 2022) | id_municipio + ano
 
-feols.1t <- feols(modelo, data = df.1t)
+modelo <- log(abstencao) ~ 
+  log(competitividade) + log(pib_pc) + ideb + log(beneficiados) + 
+  log(pib_governo) + log(eleitores_secao) + i(ano, tratamento, ref = 2018) | id_municipio + ano
+
+feols.1t <- feols(modelo, data = df.1t %>% filter(ano == 2018 | ano == 2022))
 feols.2t <- feols(modelo, data = df.2t)
 
 
@@ -85,3 +95,60 @@ modelsummary(list(
 ), stars = T)
 summary(feols.1t)
 summary(feols.2t)
+
+iplot(feols.1t <- feols(modelo, data = df.1t %>% filter(ano == 2018 | ano == 2022)))
+
+
+
+
+
+df <- read_csv("data.csv") 
+
+df_r1 <- df %>% 
+  filter(distancia < 150, turno == 2) %>% 
+  mutate(distancia = ifelse(tratamento, distancia * -1, distancia))
+
+df_r1 %>% 
+  group_by(ano, tratamento) %>% 
+  summarise(abs = mean(abstencao)) %>% 
+  ggplot(aes(ano, abs, color = tratamento)) +
+  # facet_wrap(~tratamento) +
+  geom_line()
+
+
+
+
+df_r2 <- df %>% 
+  filter(distancia < 150, turno == 1, ano %in% c(2018, 2022)) %>% 
+  mutate(distancia = ifelse(tratamento, distancia * -1, distancia)) %>% 
+  arrange(id_municipio) %>% 
+  mutate(delta = abstencao - lag(abstencao)) %>% 
+  filter(ano == 2022)
+
+fit <- lm_robust(delta ~ distancia * tratamento, 
+                 data = df_r2)
+summary(fit)
+
+modelplot(fit)
+
+
+ggplot(df_r2, aes(distancia, delta, color = tratamento)) +
+  geom_point() +
+  geom_hline(yintercept = 0)
+
+
+rdr <- rdrobust(y = df_r2$delta,
+                x = df_r2$distancia)
+summary(rdr)
+
+DCdensity(df_r2$distancia)
+
+density <- rddensity(df_r2$distancia)
+rdplotdensity(density, df_r2$distancia)
+
+rdplot(y = df_r2$delta, x = df_r2$distancia, ci = 95, kernel = "triangular")
+
+
+
+
+
